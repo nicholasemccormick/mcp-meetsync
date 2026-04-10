@@ -1,7 +1,8 @@
 {
-  "name": "mcp-meetsync",
-  "version": "1.0.0",
+  "name": "@colossal-api/meetsync-mcp",
+  "version": "2.0.0",
   "description": "MCP server for MeetSync — calendar negotiation API for AI agents. Exposes all 19 MeetSync endpoints as MCP tools so any LLM can autonomously schedule meetings.",
+  "license": "MIT",
   "main": "dist/index.js",
   "bin": {
     "mcp-meetsync": "dist/index.js"
@@ -11,11 +12,11 @@
     "README.md",
     ".env.example"
   ],
-  "scripts": {
-    "build": "tsc",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "keywords": [
     "mcp",
@@ -23,15 +24,24 @@
     "ai-agent",
     "scheduling",
     "calendar",
-    "cosmic-api"
+    "colossal-api"
   ],
   "author": "",
-  "license": "MIT",
+  "scripts": {
+    "prepare": "npm run build",
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "start": "node dist/index.js",
+    "start:http": "TRANSPORT=http node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^20.10.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.2"

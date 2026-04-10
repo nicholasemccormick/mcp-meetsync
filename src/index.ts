@@ -2,18 +2,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // MeetSync MCP Server — entry point
 //
-// Exposes all 19 MeetSync operationIds as MCP tools over stdio.
+// Exposes all 19 MeetSync operationIds as MCP tools over stdio or HTTP/SSE.
 // Configure via environment variables:
 //   MEETSYNC_API_URL  — base URL of the MeetSync API  (default: http://localhost:3000)
 //   MEETSYNC_API_KEY  — API key for X-API-Key header  (required)
+//   TRANSPORT         — transport mode: 'stdio' (default) or 'http'
+//   PORT              — HTTP port when TRANSPORT=http  (default: 3000)
 //
 // Usage:
-//   node dist/index.js
+//   node dist/index.js                   # stdio mode
+//   TRANSPORT=http node dist/index.js    # HTTP/SSE mode
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dotenv/config';
 import { Server }               from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport }   from '@modelcontextprotocol/sdk/server/sse.js';
+import express                  from 'express';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -93,11 +98,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToo
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  // Server is now listening on stdin/stdout — no console output here to avoid
-  // corrupting the MCP framing. Errors go to stderr.
-  process.stderr.write('mcp-meetsync running\n');
+  const transportMode = process.env.TRANSPORT ?? 'stdio';
+
+  if (transportMode === 'http') {
+    const app = express();
+    const port = process.env.PORT ?? '3000';
+
+    const transports = new Map<string, SSEServerTransport>();
+
+    app.get('/mcp', async (req, res) => {
+      const sseTransport = new SSEServerTransport('/mcp/messages', res);
+      transports.set(sseTransport.sessionId, sseTransport);
+      res.on('close', () => transports.delete(sseTransport.sessionId));
+      await server.connect(sseTransport);
+    });
+
+    app.post('/mcp/messages', async (req, res) => {
+      const sessionId = req.query['sessionId'] as string;
+      const sseTransport = transports.get(sessionId);
+      if (!sseTransport) {
+        res.status(404).json({ error: 'Session not found' });
+        return;
+      }
+      await sseTransport.handlePostMessage(req, res);
+    });
+
+    app.get('/health', (_req, res) => {
+      res.json({ status: 'ok', server: 'meetsync-mcp' });
+    });
+
+    app.listen(Number(port), () => {
+      process.stderr.write(`MCP HTTP server running on port ${port}\n`);
+    });
+  } else {
+    const stdioTransport = new StdioServerTransport();
+    await server.connect(stdioTransport);
+    // Server is now listening on stdin/stdout — no console output here to avoid
+    // corrupting the MCP framing. Errors go to stderr.
+    process.stderr.write('mcp-meetsync running\n');
+  }
 }
 
 main().catch((err: unknown) => {
